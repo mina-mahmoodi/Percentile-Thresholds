@@ -1,6 +1,5 @@
 streamlit
-tensorflow
-scikit-learn
 pandas
 numpy
+scikit-learn
 openpyxl
