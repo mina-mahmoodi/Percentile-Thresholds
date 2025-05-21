@@ -15,31 +15,41 @@ if uploaded_file:
     for sheet in sheet_names:
         df = pd.read_excel(workbook, sheet_name=sheet)
 
-        # Check column count
+        # Ensure minimum 8 columns exist
         if df.shape[1] < 8:
             st.warning(f"Sheet '{sheet}' skipped — not enough columns.")
             continue
 
         try:
-            # Extract correct columns
+            # Extract the expected columns
             x = df.iloc[:, 0]
             y = df.iloc[:, 2]
             z = df.iloc[:, 4]
+            vib_time = pd.to_datetime(df.iloc[:, 1], errors='coerce')  # Time for X
             motor_time = pd.to_datetime(df.iloc[:, 6], errors='coerce')
             motor_state = df.iloc[:, 7]
 
-            # Get bad dates (motor state 0 or 1)
+            # Clean and convert vibration data
+            x = pd.to_numeric(x, errors='coerce')
+            y = pd.to_numeric(y, errors='coerce')
+            z = pd.to_numeric(z, errors='coerce')
+
+            # Get unique dates with motor state 0 or 1
             bad_dates = motor_time[motor_state.isin([0, 1])].dt.date.unique()
 
-            # For vibration time, just take X's time (col B)
-            vib_time = pd.to_datetime(df.iloc[:, 1], errors='coerce')
+            # Filter rows where vibration date is NOT in bad_dates
             vib_date = vib_time.dt.date
-
-            # Filter valid rows
             valid_mask = ~vib_date.isin(bad_dates)
+
+            # Apply mask
             x_valid = x[valid_mask].dropna()
             y_valid = y[valid_mask].dropna()
             z_valid = z[valid_mask].dropna()
+
+            # Skip if no data left
+            if x_valid.empty or y_valid.empty or z_valid.empty:
+                st.warning(f"Sheet '{sheet}' skipped — no valid vibration data after filtering.")
+                continue
 
             # Compute percentiles
             result = {
@@ -55,11 +65,11 @@ if uploaded_file:
             results.append(result)
 
         except Exception as e:
-            st.error(f"Error processing sheet '{sheet}': {e}")
+            st.error(f"❌ Error processing sheet '{sheet}': {e}")
 
     if results:
         st.success("✅ Thresholds calculated successfully!")
         result_df = pd.DataFrame(results)
-        st.dataframe(result_df.style.format(precision=2), use_container_width=True)
+        st.dataframe(result_df.style.format(precision=5), use_container_width=True)
     else:
         st.warning("⚠️ No valid data found in any sheet.")
