@@ -1,60 +1,55 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import os
 
-# ✅ Page settings and title
+# Page config and title
 st.set_page_config(page_title="Vibration Threshold Calculator", layout="wide")
 st.title("📈 Vibration Warning & Error Threshold Calculator")
 
-# Upload CSV
-uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+# Upload file
+uploaded_file = st.file_uploader("Upload your vibration data file (.csv or .xlsx)", type=["csv", "xlsx"])
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-
-    # Ensure necessary columns are present
-    required_columns = ['t', 'motor_state', 'vibration_x', 'vibration_y', 'vibration_z']
-    if not all(col in df.columns for col in required_columns):
-        st.error("The CSV file must contain columns: t, motor_state, vibration_x, vibration_y, vibration_z")
-    else:
-        # Convert timestamp
-        try:
-            df['t'] = pd.to_datetime(df['t'])
-        except Exception as e:
-            st.warning(f"Timestamp conversion failed: {e}")
-
-        # ✅ Filter only motor_state == 3 (motor ON)
-        motor_on_df = df[df['motor_state'] == 3].copy()
-
-        if motor_on_df.empty:
-            st.error("❌ No valid data: motor_state == 3 not found in the uploaded file.")
+if uploaded_file:
+    try:
+        # Determine file type
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
         else:
-            st.success(f"✅ Loaded {len(motor_on_df)} rows with motor ON (state 3).")
+            df = pd.read_excel(uploaded_file)
 
-            # Summary statistics
-            st.subheader("📊 Summary Statistics (Motor ON)")
-            stats = motor_on_df[['vibration_x', 'vibration_y', 'vibration_z']].describe()
-            st.dataframe(stats)
+        # Standard column names assumption
+        expected_cols = ['t', 'x', 'y', 'z', 'motor_state']
+        df.columns = [col.strip().lower() for col in df.columns]
 
-            # Line plots
-            st.subheader("📉 Vibration Over Time (Motor ON)")
+        if not all(col in df.columns for col in ['t', 'x', 'y', 'z', 'motor_state']):
+            st.error("Missing required columns. Required columns: t, x, y, z, motor_state.")
+        else:
+            # Filter only when motor is ON
+            df_on = df[df['motor_state'] == 3].copy()
 
-            fig_x = px.line(motor_on_df, x='t', y='vibration_x', title='Vibration X over Time')
-            fig_y = px.line(motor_on_df, x='t', y='vibration_y', title='Vibration Y over Time')
-            fig_z = px.line(motor_on_df, x='t', y='vibration_z', title='Vibration Z over Time')
+            if df_on.empty:
+                st.warning("No valid vibration data while motor state is 3 (ON). Please check your input.")
+            else:
+                # Calculate thresholds
+                thresholds = {}
+                for axis in ['x', 'y', 'z']:
+                    thresholds[axis] = {
+                        'warning': df_on[axis].quantile(0.90),
+                        'error': df_on[axis].quantile(0.95)
+                    }
 
-            col1, col2, col3 = st.columns(3)
-            col1.plotly_chart(fig_x, use_container_width=True)
-            col2.plotly_chart(fig_y, use_container_width=True)
-            col3.plotly_chart(fig_z, use_container_width=True)
+                # Display thresholds
+                st.subheader("📊 Calculated Thresholds (Motor ON)")
+                for axis in ['x', 'y', 'z']:
+                    st.metric(label=f"{axis.upper()} Axis - 90% Warning", value=f"{thresholds[axis]['warning']:.4f}")
+                    st.metric(label=f"{axis.upper()} Axis - 95% Error", value=f"{thresholds[axis]['error']:.4f}")
 
-            # Download filtered data
-            st.subheader("⬇️ Download Filtered Data (Motor ON)")
-            csv = motor_on_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download CSV",
-                data=csv,
-                file_name='motor_on_filtered_data.csv',
-                mime='text/csv',
-            )
+                # Plots
+                st.subheader("📉 Vibration Data while Motor ON")
+                fig = px.line(df_on, x='t', y=['x', 'y', 'z'], labels={'value': 'Vibration', 't': 'Timestamp'})
+                st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"⚠️ Error loading file: {e}")
+else:
+    st.info("📂 Please upload a .csv or .xlsx file to begin.")
