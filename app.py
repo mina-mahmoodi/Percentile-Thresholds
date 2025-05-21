@@ -18,7 +18,7 @@ if uploaded_file:
             df = pd.read_excel(uploaded_file)
 
         # Expected column names (case-sensitive)
-        expected_columns = ['X', 'Y', 'Z', 'T(X)', 'T(Y)', 'T(Z)', 'T(Motor State)', 'Motor State']
+        expected_columns = ['X', 'Y', 'Z', 'T(X)', 'T(Y)', 'T(Z)', 'T(motor state)', 'Motor State']
         missing_cols = [col for col in expected_columns if col not in df.columns]
 
         if missing_cols:
@@ -26,7 +26,7 @@ if uploaded_file:
         else:
             # Rename columns for processing
             df_processed = pd.DataFrame({
-                't': df['T(Motor State)'],
+                't': df['T(motor state)'],
                 'x': df['X'],
                 'y': df['Y'],
                 'z': df['Z'],
@@ -36,7 +36,7 @@ if uploaded_file:
             # Drop rows with missing values
             df_processed.dropna(subset=['t', 'x', 'y', 'z', 'motor_state'], inplace=True)
 
-            # Filter for motor ON
+            # Filter for motor ON (motor_state == 3)
             df_on = df_processed[df_processed['motor_state'] == 3].copy()
 
             if df_on.empty:
