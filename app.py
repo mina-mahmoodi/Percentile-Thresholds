@@ -11,20 +11,24 @@ uploaded_file = st.file_uploader("Upload your vibration data (.csv or .xlsx)", t
 
 if uploaded_file:
     try:
-        # Load file
+        # Detect file type and load data
         if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
+            sheets = {"Sheet1": pd.read_csv(uploaded_file)}
         else:
-            df = pd.read_excel(uploaded_file)
+            xls = pd.ExcelFile(uploaded_file)
+            sheets = {sheet_name: xls.parse(sheet_name) for sheet_name in xls.sheet_names}
 
-        # Expected column names (case-sensitive)
-        expected_columns = ['X', 'Y', 'Z', 'T(X)', 'T(Y)', 'T(Z)', 'T(motor state)', 'Motor State']
-        missing_cols = [col for col in expected_columns if col not in df.columns]
+        for sheet_name, df in sheets.items():
+            st.header(f"📄 Sheet: {sheet_name}")
 
-        if missing_cols:
-            st.error(f"Missing required columns: {missing_cols}")
-        else:
-            # Rename columns for processing
+            expected_columns = ['X', 'Y', 'Z', 'T(X)', 'T(Y)', 'T(Z)', 'T(motor state)', 'Motor State']
+            missing_cols = [col for col in expected_columns if col not in df.columns]
+
+            if missing_cols:
+                st.warning(f"Skipping sheet '{sheet_name}' due to missing columns: {missing_cols}")
+                continue
+
+            # Rename and select necessary columns
             df_processed = pd.DataFrame({
                 't': df['T(motor state)'],
                 'x': df['X'],
@@ -33,34 +37,36 @@ if uploaded_file:
                 'motor_state': df['Motor State']
             })
 
-            # Drop rows with missing values
             df_processed.dropna(subset=['t', 'x', 'y', 'z', 'motor_state'], inplace=True)
 
-            # Filter for motor ON (motor_state == 3)
+            # Filter motor_state == 3 (motor ON)
             df_on = df_processed[df_processed['motor_state'] == 3].copy()
 
             if df_on.empty:
-                st.warning("No vibration data where motor state is 3 (ON).")
-            else:
-                # Calculate thresholds
-                thresholds = {
-                    axis: {
-                        'warning': df_on[axis].quantile(0.90),
-                        'error': df_on[axis].quantile(0.95)
-                    } for axis in ['x', 'y', 'z']
-                }
+                st.warning("⚠️ No motor ON data in this sheet.")
+                continue
 
-                st.subheader("📊 Calculated Thresholds (Motor ON)")
-                for axis in ['x', 'y', 'z']:
-                    st.metric(f"{axis.upper()} Axis - 90% Warning", f"{thresholds[axis]['warning']:.4f}")
-                    st.metric(f"{axis.upper()} Axis - 95% Error", f"{thresholds[axis]['error']:.4f}")
+            # Thresholds: 85th for warning, 95th for error
+            thresholds = {
+                axis: {
+                    'warning': df_on[axis].quantile(0.85),
+                    'error': df_on[axis].quantile(0.95)
+                } for axis in ['x', 'y', 'z']
+            }
 
-                # Plot
-                st.subheader("📉 Vibration While Motor ON")
-                fig = px.line(df_on, x='t', y=['x', 'y', 'z'], labels={'value': 'Vibration', 't': 'Timestamp'})
-                st.plotly_chart(fig, use_container_width=True)
+            # Display metrics
+            st.subheader("🎯 Thresholds (Motor ON)")
+            for axis in ['x', 'y', 'z']:
+                col1, col2 = st.columns(2)
+                col1.metric(f"{axis.upper()} - 85% Warning", f"{thresholds[axis]['warning']:.4f}")
+                col2.metric(f"{axis.upper()} - 95% Error", f"{thresholds[axis]['error']:.4f}")
+
+            # Plot
+            st.subheader("📉 Vibration Plot (Motor ON only)")
+            fig = px.line(df_on, x='t', y=['x', 'y', 'z'], labels={'value': 'Vibration', 't': 'Timestamp'})
+            st.plotly_chart(fig, use_container_width=True)
 
     except Exception as e:
-        st.error(f"⚠️ Error: {e}")
+        st.error(f"❌ Error: {e}")
 else:
-    st.info("📂 Upload a CSV or Excel file to start.")
+    st.info("📂 Upload a CSV or Excel file to begin.")
