@@ -3,8 +3,4 @@ tensorflow
 scikit-learn
 pandas
 numpy
-streamlit
-tensorflow
-scikit-learn
-pandas
-numpy
+openpyxl
